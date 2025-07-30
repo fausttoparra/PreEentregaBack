@@ -1,63 +1,116 @@
-import fs from 'fs/promises';
+import { CartModel } from '../models/CartModel.js';
+import mongoose from 'mongoose';
 
 class CartManager {
-  constructor(path) {
-    this.path = path;
-  }
-
-  // Leer el archivo y devolver el contenido parseado o un array vacío si no existe
-  async _readFile() {
+  // Crear un carrito nuevo vacío
+  async createCart() {
     try {
-      const data = await fs.readFile(this.path, 'utf-8');
-      return JSON.parse(data);
+      const newCart = await CartModel.create({ products: [] });
+      return newCart;
     } catch (error) {
-      if (error.code === 'ENOENT') {
-        // Archivo no existe, lo crea vacío
-        await this._writeFile([]);
-        return [];
-      }
+      console.error('Error al crear el carrito:', error);
       throw error;
     }
   }
 
-  // Escribir datos en el archivo
-  async _writeFile(data) {
-    await fs.writeFile(this.path, JSON.stringify(data, null, 2));
-  }
-
-  // Crear un carrito nuevo con id autoincremental y productos vacío
-  async createCart() {
-    const carts = await this._readFile();
-    const newId = carts.length > 0 ? carts[carts.length - 1].id + 1 : 1;
-    const newCart = { id: newId, products: [] };
-    carts.push(newCart);
-    await this._writeFile(carts);
-    return newCart;
-  }
-
-  // Obtener carrito por ID
-  async getCartById(id) {
-    const carts = await this._readFile();
-    return carts.find(cart => cart.id === Number(id));
-  }
-
-  // Agregar producto al carrito: si ya existe, incrementar quantity, sino agregarlo
-  async addProductToCart(cartId, productId) {
-    const carts = await this._readFile();
-    const cart = carts.find(c => c.id === Number(cartId));
-    if (!cart) return null;
-
-    // Buscar producto dentro del carrito
-    const productInCart = cart.products.find(p => p.product === Number(productId));
-
-    if (productInCart) {
-      productInCart.quantity += 1;
-    } else {
-      cart.products.push({ product: Number(productId), quantity: 1 });
+  // Obtener carrito por ID con populate
+  async getCartById(cartId) {
+    try {
+      const cart = await CartModel.findById(cartId).populate('products.product');
+      return cart;
+    } catch (error) {
+      console.error('Error al obtener el carrito:', error);
+      throw error;
     }
+  }
 
-    await this._writeFile(carts);
-    return cart;
+  // Agregar producto al carrito
+  async addProductToCart(cartId, productId) {
+    try {
+      const cart = await CartModel.findById(cartId);
+      if (!cart) return null;
+
+      const existingProduct = cart.products.find(p => p.product.toString() === productId);
+
+      if (existingProduct) {
+        existingProduct.quantity += 1;
+      } else {
+        cart.products.push({ product: new mongoose.Types.ObjectId(productId), quantity: 1 });
+      }
+
+      await cart.save();
+      return await cart.populate('products.product');
+    } catch (error) {
+      console.error('Error al agregar producto al carrito:', error);
+      throw error;
+    }
+  }
+
+  // Actualizar cantidad de un producto específico
+  async updateProductQuantity(cartId, productId, quantity) {
+    try {
+      const cart = await CartModel.findById(cartId);
+      if (!cart) return null;
+
+      const productInCart = cart.products.find(p => p.product.toString() === productId);
+      if (!productInCart) return null;
+
+      productInCart.quantity = quantity;
+      await cart.save();
+      return await cart.populate('products.product');
+    } catch (error) {
+      console.error('Error al actualizar cantidad:', error);
+      throw error;
+    }
+  }
+
+  // Eliminar un producto del carrito
+  async removeProductFromCart(cartId, productId) {
+    try {
+      const cart = await CartModel.findById(cartId);
+      if (!cart) return null;
+
+      cart.products = cart.products.filter(p => p.product.toString() !== productId);
+      await cart.save();
+      return await cart.populate('products.product');
+    } catch (error) {
+      console.error('Error al eliminar producto:', error);
+      throw error;
+    }
+  }
+
+  // Reemplazar todos los productos del carrito
+  async replaceCartProducts(cartId, productsArray) {
+    try {
+      const cart = await CartModel.findById(cartId);
+      if (!cart) return null;
+
+      cart.products = productsArray.map(item => ({
+        product: new mongoose.Types.ObjectId(item.product),
+        quantity: item.quantity
+      }));
+
+      await cart.save();
+      return await cart.populate('products.product');
+    } catch (error) {
+      console.error('Error al reemplazar productos del carrito:', error);
+      throw error;
+    }
+  }
+
+  // Vaciar el carrito
+  async clearCart(cartId) {
+    try {
+      const cart = await CartModel.findById(cartId);
+      if (!cart) return null;
+
+      cart.products = [];
+      await cart.save();
+      return cart;
+    } catch (error) {
+      console.error('Error al vaciar el carrito:', error);
+      throw error;
+    }
   }
 }
 

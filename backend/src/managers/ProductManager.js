@@ -1,75 +1,84 @@
-import fs from 'fs/promises';
+import { ProductModel } from '../models/ProductModel.js'; // Usamos el modelo externo
 
 class ProductManager {
-  constructor(path) {
-    this.path = path;
-  }
+  constructor() {}
 
-  async _readFile() {
+  // Obtener productos con filtros, paginación y ordenamiento
+  async getProducts({ limit = 10, page = 1, sort = '', query = '' }) {
     try {
-      const data = await fs.readFile(this.path, 'utf-8');
-      return JSON.parse(data);
+      const filters = {};
+
+      if (query) {
+        filters.$or = [
+          { title: { $regex: query, $options: 'i' } },
+          { category: { $regex: query, $options: 'i' } },
+        ];
+      }
+
+      const sortOption = sort === 'asc'
+        ? { price: 1 }
+        : sort === 'desc'
+        ? { price: -1 }
+        : {};
+
+      const products = await ProductModel.find(filters)
+        .sort(sortOption)
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .lean();
+
+      const total = await ProductModel.countDocuments(filters);
+      const totalPages = Math.ceil(total / limit);
+
+      return {
+        status: "success",
+        payload: products,
+        totalPages,
+        prevPage: page > 1 ? page - 1 : null,
+        nextPage: page < totalPages ? page + 1 : null,
+        page: Number(page),
+        hasPrevPage: page > 1,
+        hasNextPage: page < totalPages,
+        prevLink: page > 1 ? `/api/products?limit=${limit}&page=${page - 1}&sort=${sort}&query=${query}` : null,
+        nextLink: page < totalPages ? `/api/products?limit=${limit}&page=${page + 1}&sort=${sort}&query=${query}` : null,
+      };
     } catch (error) {
-      // Si no existe el archivo, devuelve array vacío
-      if (error.code === 'ENOENT') return [];
-      throw error;
+      console.error('Error al obtener los productos:', error);
+      return { status: 'error', message: 'Error al obtener los productos' };
     }
   }
 
-  async _writeFile(data) {
-    await fs.writeFile(this.path, JSON.stringify(data, null, 2));
-  }
-
-  async getProducts() {
-    return await this._readFile();
-  }
-
-  async getProductById(id) {
-    const products = await this._readFile();
-    return products.find(p => p.id == id);
-  }
-
+  // Agregar un nuevo producto
   async addProduct(productData) {
-    const products = await this._readFile();
-
-    // Generar ID único
-    const newId = products.length > 0 ? products[products.length - 1].id + 1 : 1;
-
-    const newProduct = {
-      id: newId,
-      ...productData
-    };
-
-    products.push(newProduct);
-    await this._writeFile(products);
-
-    return newProduct;
+    try {
+      const newProduct = await ProductModel.create(productData);
+      return { status: 'success', message: 'Producto agregado', product: newProduct };
+    } catch (error) {
+      console.error('Error al agregar el producto:', error);
+      return { status: 'error', message: 'No se pudo agregar el producto' };
+    }
   }
 
-  async updateProduct(id, updateData) {
-    const products = await this._readFile();
-    const index = products.findIndex(p => p.id == id);
-
-    if (index === -1) return null;
-
-    // No se actualiza el id
-    delete updateData.id;
-
-    products[index] = { ...products[index], ...updateData };
-    await this._writeFile(products);
-
-    return products[index];
+  // Eliminar un producto por ID
+  async deleteProduct(productId) {
+    try {
+      await ProductModel.findByIdAndDelete(productId);
+      return { status: 'success', message: 'Producto eliminado' };
+    } catch (error) {
+      console.error('Error al eliminar el producto:', error);
+      return { status: 'error', message: 'No se pudo eliminar el producto' };
+    }
   }
 
-  async deleteProduct(id) {
-    let products = await this._readFile();
-    const initialLength = products.length;
-    products = products.filter(p => p.id != id);
-
-    if (products.length === initialLength) return false;
-
-    await this._writeFile(products);
-    return true;
+  // Obtener un producto por ID
+  async getProductById(productId) {
+    try {
+      const product = await ProductModel.findById(productId).lean();
+      return product;
+    } catch (error) {
+      console.error('Error al obtener producto por ID:', error);
+      return null;
+    }
   }
 }
 

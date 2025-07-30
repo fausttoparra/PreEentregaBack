@@ -1,0 +1,34 @@
+{{! Extiende layout si usás main.handlebars }}
+{{#extend "main"}}
+
+  {{#content "body"}}
+    <h1>Listado de productos</h1>
+
+    <ul>
+      {{#each products}}
+        <li>
+          <strong>{{title}}</strong> - ${{price}}<br>
+          Categoría: {{category}}<br>
+          Stock: {{stock}}<br>
+          <form action="/api/carts/tuCarritoID/product/{{_id}}" method="POST">
+            <button type="submit">Agregar al carrito</button>
+          </form>
+        </li>
+        <hr>
+      {{/each}}
+    </ul>
+
+    <div>
+      {{#if pagination.hasPrevPage}}
+        <a href="{{pagination.prevLink}}">⬅ Anterior</a>
+      {{/if}}
+
+      <span>Página {{pagination.page}} de {{pagination.totalPages}}</span>
+
+      {{#if pagination.hasNextPage}}
+        <a href="{{pagination.nextLink}}">Siguiente ➡</a>
+      {{/if}}
+    </div>
+  {{/content}}
+
+{{/extend}}
